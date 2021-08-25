@@ -7,9 +7,6 @@ if(arg(0)=='booking' && is_numeric(arg(1)) && arg(2)==""){
   }
   unset($_SESSION['booking_ref_prod_display_nid']);
 }
- 
-
-
 // Meeting Link Access Denied START
 if(arg(0)=='node' && is_numeric(arg(1)) && arg(2)== 'meeting' && arg(3)== 'attend' && $user->uid>0){ 
 	 $qry_user_bookings = "SELECT booking.pid AS pid, booking.slot_time AS slot_time, booking.primary_id AS primary_id, booking.duration AS booking_duration, booking.created AS booking_created, users_booking.mail AS users_booking_mail, users_booking.uid AS users_booking_uid, 'booking' AS field_data_field_bt_ct_ref_1_booking_entity_type
@@ -57,36 +54,9 @@ LIMIT 10 OFFSET 0";
 			  drupal_set_message('Meeting Expired','error');
 		      drupal_goto('/bookings');
 			}
-			
-		 
-		 
-		 
-		 
-		 
-		 
-		 
-		 
-		 
-		 
-		 
-		 
-		 
+					 
 	  }
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	  
-	}
+  }
 }
 // Meeting Link Access Denied END
 
@@ -386,12 +356,6 @@ ORDER BY booking_created DESC ";
   
 }
 
-
-
-
-
-
- 
  
 function filter_event_title_menu(){ 
 	 
