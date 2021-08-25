@@ -1,0 +1,422 @@
+<?php
+global $user;
+
+if(arg(0)=='booking' && is_numeric(arg(1)) && arg(2)==""){
+  if(!isset($_SESSION)){
+	session_start();  
+  }
+  unset($_SESSION['booking_ref_prod_display_nid']);
+}
+ 
+
+
+// Meeting Link Access Denied START
+if(arg(0)=='node' && is_numeric(arg(1)) && arg(2)== 'meeting' && arg(3)== 'attend' && $user->uid>0){ 
+	 $qry_user_bookings = "SELECT booking.pid AS pid, booking.slot_time AS slot_time, booking.primary_id AS primary_id, booking.duration AS booking_duration, booking.created AS booking_created, users_booking.mail AS users_booking_mail, users_booking.uid AS users_booking_uid, 'booking' AS field_data_field_bt_ct_ref_1_booking_entity_type
+	FROM 
+	{booking} booking
+	INNER JOIN {users} users_booking ON booking.uid = users_booking.uid
+	WHERE (( (users_booking.uid = '".$user->uid."' ) ))
+	ORDER BY slot_time DESC limit 1";
+	$qry_user_bookings_exe = db_query($qry_user_bookings);
+	foreach($qry_user_bookings_exe as $qry_user_bookings_res){
+	  $this_primary_id = intval($qry_user_bookings_res->primary_id);
+	  $qry_booking_nid_author = "SELECT node.uid AS node_uid, node.created AS node_created
+FROM 
+{node} node
+WHERE (( (node.status = '1') AND (node.type IN  ('booking_timeslots_xmp_venue')) AND (node.nid = '".$this_primary_id."') ))
+ORDER BY node_created DESC
+LIMIT 10 OFFSET 0";
+      $qry_booking_nid_author_exe = db_query($qry_booking_nid_author);
+	  foreach($qry_booking_nid_author_exe as $qry_booking_nid_author_res){
+	     $qry_booking_nid_author_uid = $qry_booking_nid_author_res->node_uid;
+		 //drupal_set_message($qry_user_bookings_res->pid.'=='.$qry_booking_nid_author_uid);
+		    $strtotime_booked_date = $qry_user_bookings_res->slot_time;
+			$qry_meeting_mins = "SELECT field_teacher_meeting_mins_value FROM `field_data_field_teacher_meeting_mins` where revision_id=201";
+			$qry_meeting_mins_exe = db_query($qry_meeting_mins);
+			foreach($qry_meeting_mins_exe as $qry_meeting_mins_res){
+			  $teacher_meeting_mins_duration = $qry_meeting_mins_res->field_teacher_meeting_mins_value;
+			}
+			$difference = strtotime($strtotime_booked_date) - strtotime(date('Y-m-d H:i:s'));
+			$difference_in_minutes = $difference / 60;
+			$difference_in_minutes = intval($difference_in_minutes);	
+			$meeting_link_allowed = 0;
+			if($difference_in_minutes > -($teacher_meeting_mins_duration)){
+			   $qry_meeting = "SELECT node.title AS node_title, node.nid AS nid, node.created AS node_created
+				FROM 
+				{node} node
+				WHERE (( (node.status = '1') AND (node.type IN  ('virtual_classroom')) AND (node.uid IN  ('".$qry_booking_nid_author_uid."')) ))
+				ORDER BY node_created DESC
+				LIMIT 10 OFFSET 0";
+				$qry_meeting_exe = db_query($qry_meeting);
+				foreach($qry_meeting_exe as $qry_meeting_res){
+				  $meeting_link_allowed = 1;
+				}
+			}
+			if($meeting_link_allowed==0){
+			  drupal_set_message('Meeting Expired','error');
+		      drupal_goto('/bookings');
+			}
+			
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+		 
+	  }
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	}
+}
+// Meeting Link Access Denied END
+
+if(arg(0)=='teacher-bookings' && $user->uid>0){ 
+   $qry = "SELECT node.nid AS nid, node.created AS node_created
+	FROM 
+	{node} node
+	WHERE (( (node.status = '1') AND (node.type IN  ('booking_timeslots_xmp_venue')) AND (node.uid IN  ('".$user->uid."')) ))
+	ORDER BY node_created DESC
+	LIMIT 1000 OFFSET 0";
+	$qry_exe = db_query($qry);
+	$all_nodes_str = "";
+	$found_nodes = 0;
+	foreach($qry_exe as $qry_res){
+	  $all_nodes_str .= $qry_res->nid .',';
+	  $found_nodes++;
+	}
+	if($found_nodes==0){  
+		drupal_set_message('First, create your Booking Product','error');
+		drupal_goto('/node/add/booking-timeslots-xmp-venue');
+	}
+}
+// Disallow Teacher to Create More The One Booking Product START //
+if($user->uid>0 && arg(0)=='node' && arg(1)=='add' && arg(2)=='booking-timeslots-xmp-venue'){
+  $qry = "SELECT node.nid AS nid, node.created AS node_created
+	FROM 
+	{node} node
+	WHERE (( (node.status = '1') AND (node.type IN  ('booking_timeslots_xmp_venue')) AND (node.uid IN  ('".$user->uid."')) ))
+	ORDER BY node_created DESC
+	LIMIT 1000 OFFSET 0";
+	$qry_exe = db_query($qry);
+	$all_nodes_str = "";
+	$found_nodes = 0;
+	foreach($qry_exe as $qry_res){
+	  $all_nodes_str .= $qry_res->nid .',';
+	  $found_nodes++;
+	}
+	if($found_nodes>0){
+	  drupal_set_message('You have already created your Booking Product','error');
+	  drupal_goto('/booking-products');  
+	}
+	
+}
+// Disallow Teacher to Create More The One Booking Product END //
+
+
+function filter_event_title_form_alter(&$form, &$form_state, $form_id) {
+  
+  // AUTO ADD PRODUCTS ON PRODUCT DISPLAY, start //
+  global $user;
+  if($user->uid >0 && arg(0)=='node' && is_numeric(arg(1)) && $form_id == 'views_exposed_form' && arg(2)!='opening_hours'){  
+	  if(!isset($_SESSION)){
+		  session_start();  
+	  }
+	  if(!empty($_SESSION['teacher_runtime_prim_id'])  && !empty($_SESSION['teacher_runtime_prod_displ_id'])){
+	    // GET SECONDARY NODE ID start
+		$primary_node_id = intval($_SESSION['teacher_runtime_prim_id']);
+		$product_display_id = intval($_SESSION['teacher_runtime_prod_displ_id']);
+		$node = node_load($product_display_id);
+	    // GET SECONDARY NODE ID end
+				
+	    // PRODUCT ADD auto-booking-5-dollar start //
+		  $prod_display_author_obj = user_load(intval($node->uid)); 
+	  $subjects_html = "";
+	  $ptr = 1;
+	  foreach($prod_display_author_obj->field_collection_subject['und'] as $keys => $teach_subjects_values ){
+	      $subject_collection_item_id = $teach_subjects_values['revision_id'];
+		  $subject_collection_item_id_obj = "";
+		  $subject_collection_item_id_obj = field_collection_item_load($subject_collection_item_id, $reset = FALSE);
+		  $final_selected_subject_tid  = $subject_collection_item_id_obj->field_subject_chosen['und'][0]['tid'];
+		  $final_selected_duration_tid = $subject_collection_item_id_obj->field_subject_price['und'][0]['tid'];
+		  $final_selected_subject_tid_obj = taxonomy_term_load($final_selected_subject_tid);
+          $final_selected_duration_tid_obj = taxonomy_term_load($final_selected_duration_tid);	
+
+		  if($ptr==1){
+			   $first_teacher_subject_15min_price = $final_selected_duration_tid_obj->name;
+			   $first_teacher_subject_15min_price = str_replace('$','',$first_teacher_subject_15min_price);
+		       $first_teacher_subject_15min_price = intval($first_teacher_subject_15min_price);
+			   $bkg_product_obj = commerce_product_load_by_sku('auto-booking-'.$first_teacher_subject_15min_price.'-dollar');  // Commerce Product Object
+			   $bkg_product_id = intval($bkg_product_obj->product_id);  // Commerce product ID		
+			   $node->field_product[LANGUAGE_NONE][]['product_id'] = $bkg_product_id;
+			   $node->body[LANGUAGE_NONE][0]['value'] = 'CalendarHere';
+			   node_save($node);
+			   unset($_SESSION['teacher_runtime_prim_id']);			
+			   drupal_goto('node/'.$_SESSION['teacher_runtime_prod_displ_id']);
+		  }
+		// PRODUCT ADD auto-booking-5-dollar end //
+		} // END FOR EACH
+	  }
+	  
+  }
+  
+  // AUTO ADD PRODUCTS ON PRODUCT DISPLAY, END //  
+
+  // UPDATE Primary Page Hours Automatically START// 	
+	global $user;
+	if(arg(0) =='node' && is_numeric(arg(1)) && arg(2) =='opening_hours' && $user->uid>0 && $form_id == 'views_exposed_form'){ // FIRST IF START
+		function get_comm_product_price($sku_given){
+		  $bkg_product_sku = $sku_given; // SKU
+		  $bkg_product_obj = commerce_product_load_by_sku($bkg_product_sku);  // Commerce Product Object
+		  $bkg_product_id = $bkg_product_obj->product_id;  // Commerce product ID
+		  $bkg_product = commerce_product_load($bkg_product_id);
+		  $bkg_product_price = ($bkg_product->commerce_price['und'][0]['amount'])/100;
+
+
+
+		  return $bkg_product_price;
+		}
+	  // check if opening hours page is PRIMARY START //
+	  $node_id_prim = intval(arg(1));
+	  $primary_node_obj = node_load($node_id_prim);
+	  if($primary_node_obj->type == 'booking_timeslots_xmp_venue'){	    
+	    // CHECK SECONDARY NODE ID of THIS PRIMARY NODE ID start //	
+       $qry_sec_nid = "SELECT node.nid AS nid, node.created AS node_created
+		FROM 
+		{node} node
+		LEFT JOIN {field_data_field_bt_xmp_ref_2nd_to_1st} field_data_field_bt_xmp_ref_2nd_to_1st ON node.nid = field_data_field_bt_xmp_ref_2nd_to_1st.entity_id AND (field_data_field_bt_xmp_ref_2nd_to_1st.entity_type = 'node' AND field_data_field_bt_xmp_ref_2nd_to_1st.deleted = '0')
+		WHERE (( (node.status = '1') AND (node.type IN  ('booking_timeslots_xmp_facility')) AND (field_data_field_bt_xmp_ref_2nd_to_1st.field_bt_xmp_ref_2nd_to_1st_target_id = '".$node_id_prim."') ))
+		ORDER BY node_created DESC
+		LIMIT 1";
+		$qry_sec_nid_exe = db_query($qry_sec_nid);
+		foreach($qry_sec_nid_exe as $qry_sec_nid_res){
+		  $second_node_id = intval($qry_sec_nid_res->nid);
+		  // DELETE ALL SECONDARY HOURS in order to avoid conflict START//
+		  $delete_query = "DELETE FROM `opening_hours` where nid= ".$second_node_id;
+		  db_query($delete_query);
+		  // DELETE ALL SECONDARY HOURS in order to avoid conflict END//		  
+		}
+		if(!isset($second_node_id)){
+		  drupal_set_message('Create Secondary Page First','error');
+		  drupal_goto('/node/'.$node_id_prim);
+		}
+	    // CHECK SECONDARY NODE ID of THIS PRIMARY NODE ID END //		
+		$qry_prm_hours = "SELECT * FROM `opening_hours` where nid= ".$node_id_prim." order by instance_id ASC";
+		$qry_prm_hours_exe = db_query($qry_prm_hours);
+		foreach($qry_prm_hours_exe as $qry_prm_hours_res){
+		  $prim_hr_date = $qry_prm_hours_res->date;
+		  $prim_hr_start_time = $qry_prm_hours_res->start_time;
+		  $prim_hr_end_time = $qry_prm_hours_res->end_time;
+		  // check if this date's SECONDARY HOUR created or not START //
+		  $qry_sec_hours_this_date_results = db_select('opening_hours', 'n')
+			->fields('n')
+			->condition('date',$prim_hr_date,'=')
+			->condition('nid',$second_node_id,'=')
+			->execute()
+			->fetchAssoc();
+		   $nid_found_secondary_hour_this_date = intval($qry_sec_hours_this_date_results['nid']);
+  	       if($nid_found_secondary_hour_this_date<=0){  // NO SECONDARY HOURS FOUND, INSERT SECONDARY HOURs for This date
+			   // CALCULATE COMMERCE PRODUCT PRICES start //
+				$notice_col_data = '{"secondary_id":0,"price":{"type":"non_regular","regular":{"non_members":"","members":""},"non_regular":{"15":{"non_members":"'.get_comm_product_price('auto-booking-5-dollar').'","members":"'.get_comm_product_price('auto-booking-5-dollar').'"},"30":{"non_members":"'.get_comm_product_price('auto-booking-5-dollar').'","members":"'.get_comm_product_price('auto-booking-5-dollar').'"},"45":{"non_members":"'.get_comm_product_price('auto-booking-5-dollar').'","members":"'.get_comm_product_price('auto-booking-5-dollar').'"},"60":{"non_members":"'.get_comm_product_price('auto-booking-5-dollar').'","members":"'.get_comm_product_price('auto-booking-5-dollar').'"},"90":{"non_members":"'.get_comm_product_price('auto-booking-5-dollar').'","members":"'.get_comm_product_price('auto-booking-5-dollar').'"},"120":{"non_members":"'.get_comm_product_price('auto-booking-5-dollar').'","members":"'.get_comm_product_price('auto-booking-5-dollar').'"}}},"max_time_ahead_rsrv_weeks":"0","max_time_ahead_rsrv_days":"0","max_time_ahead_rsrv_hours":"0","min_time_ahead_rsrv_weeks":"0","min_time_ahead_rsrv_days":"0","min_time_ahead_rsrv_hours":"1"}';		
+				// CALCULATE COMMERCE PRODUCT PRICES end //		  
+				$nid_second_hour_this_date = db_insert('opening_hours')  
+				->fields(array(
+				  'instance_id' => NULL,
+				  'nid' => $second_node_id,
+				  'date' => $prim_hr_date,
+				  'start_time' => $prim_hr_start_time,
+				  'end_time' => $prim_hr_end_time,
+				  'category_tid' => 0,
+				  'notice' => $notice_col_data,
+				  'repeat_rule' => 0,
+				  'repeat_end_date' => '3019-04-18',
+				  'original_instance_id' => NULL,
+				  'customised' => NULL,
+				  'capacity' => 1,
+				  'slot_length' => 60        
+				))
+				->execute();
+			}// ENDIF
+		  // check if this date's SECONDARY HOUR created or not END //		  
+		} // END FOREACH
+	  } // END IF, PRIMARY NODE TYPE CHECK
+	  
+	  // check if opening hours page is PRIMARY END //  
+	} // FIRST END IF END
+
+  // UPDATE Primary Page Hours Automatically END//
+  
+  // PRIMARY PAGE TITLE AUTO WITH TEACHER NAME start //
+   if(arg(0)=='node' && arg(1)=='add' && arg(2)=='booking-timeslots-xmp-venue'){
+     global $user;
+	 $form['title']['#default_value'] = $user->name;
+   }
+  // PRIMARY PAGE TITLE AUTO WITH TEACHER NAME start //
+  
+  
+  
+  
+  if($form_id == 'product_node_form'){/*
+    $calendar_prod_arr = array();
+	$teacher_term_arr = array();
+	$calendar_prod_arr['_none'] = '- None -';
+	global $user;
+	$qry = "SELECT node.title AS node_title, node.nid AS nid, node.created AS node_created
+	FROM 
+	{node} node
+	WHERE (( (node.uid = '".$user->uid."' ) )AND(( (node.status = '1') AND (node.type IN  ('booking_timeslots_xmp_facility')) )))
+	ORDER BY node_created DESC";
+	$qry_exe = db_query($qry);
+	foreach($qry_exe as $qry_res){
+	  $calendar_prod_arr[$qry_res->nid] =  $qry_res->node_title;
+	}
+    $form['field_calendar_product']['und']['#options'] = $calendar_prod_arr;
+	// SET Teachers Term on Product Display Page START //
+	$qry_teachers = "SELECT taxonomy_term_data.name AS taxonomy_term_data_name, taxonomy_term_data.vid AS taxonomy_term_data_vid, taxonomy_term_data.tid AS tid, taxonomy_vocabulary.machine_name AS taxonomy_vocabulary_machine_name
+FROM 
+{taxonomy_term_data} taxonomy_term_data
+LEFT JOIN {taxonomy_vocabulary} taxonomy_vocabulary ON taxonomy_term_data.vid = taxonomy_vocabulary.vid
+WHERE (( (taxonomy_vocabulary.machine_name IN  ('brands')) AND (taxonomy_term_data.name LIKE '".$user->name."' ) ))";
+	$qry_teachers_exe = db_query($qry_teachers);
+	foreach($qry_teachers_exe as $qry_teachers_res){
+	  $teacher_term_arr[$qry_teachers_res->tid] =  $qry_teachers_res->taxonomy_term_data_name;
+	}
+    $form['field_brand']['und']['#options'] = $teacher_term_arr;
+	// SET Teachers Term on Product Display Page END //
+  */}
+  // /bookings page START //
+  if($form_id == 'views_exposed_form' && arg(0) == 'bookings'){
+	$qry_exposed_teachers_arr = array();
+	$qry_exposed_teachers_arr[''] = '-Any-';
+	global $user;
+    if($user->uid!=1){	
+	$qry_exposed_teachers = "SELECT booking.pid AS pid,booking.primary_id AS primary_id, booking.duration AS booking_duration, booking.created AS booking_created, users_booking.mail AS users_booking_mail, users_booking.uid AS users_booking_uid, 'booking' AS field_data_field_bt_ct_ref_1_booking_entity_type
+FROM 
+{booking} booking
+INNER JOIN {users} users_booking ON booking.uid = users_booking.uid
+WHERE (( (users_booking.uid = '".$user->uid."' ) ))
+ORDER BY booking_created DESC ";
+   }
+   else if($user->uid ==1){
+		$qry_exposed_teachers = "SELECT booking.pid AS pid,booking.primary_id AS primary_id, booking.duration AS booking_duration, booking.created AS booking_created, users_booking.mail AS users_booking_mail, users_booking.uid AS users_booking_uid, 'booking' AS field_data_field_bt_ct_ref_1_booking_entity_type
+		FROM 
+		{booking} booking
+		INNER JOIN {users} users_booking ON booking.uid = users_booking.uid
+		ORDER BY booking_created DESC ";   
+   }
+
+
+	$qry_exposed_teachers_exe = db_query($qry_exposed_teachers);
+	foreach($qry_exposed_teachers_exe as $qry_exposed_teachers_res){
+	    $this_primary_id = intval($qry_exposed_teachers_res->primary_id);
+		$node_id_obj = node_load(str_replace(',','',intval($this_primary_id)));
+        $author_obj = user_load(intval($node_id_obj->uid));
+		$qry_exposed_teachers_arr[$this_primary_id] = $author_obj->name;
+	}
+	$form['field_bt_ct_ref_1_target_id']['#type'] = 'select';
+	$form['field_bt_ct_ref_1_target_id']['#multiple'] = FALSE;
+	unset($form['field_bt_ct_ref_1_target_id']['#size']);
+    $form['field_bt_ct_ref_1_target_id']['#options'] = $qry_exposed_teachers_arr;
+  }
+  // /bookings page END //  
+  
+   // /teacher-bookings page START //
+  if($form_id == 'views_exposed_form' && arg(0) == 'teacher-bookings'){
+	global $user;
+	$qry_pages = "SELECT node.nid AS nid, node.created AS node_created
+	FROM 
+	{node} node
+	WHERE (( (node.status = '1') AND (node.type IN  ('booking_timeslots_xmp_venue')) AND (node.uid IN  ('".$user->uid."')) ))
+	ORDER BY node_created DESC ";
+	$qry_pages_exe = db_query($qry_pages);
+	$all_nodes_str = "";
+	foreach($qry_pages_exe as $qry_pages_res){
+	  $all_nodes_str .= $qry_pages_res->nid .',';
+	}
+	$all_nodes_needed_str = substr($all_nodes_str, 0, -1);
+	$qry_all_students = "SELECT booking.pid AS pid, booking.duration AS booking_duration, booking.created AS booking_created, booking.uid AS booking_uid, 'booking' AS field_data_field_bt_ct_ref_1_booking_entity_type
+	FROM 
+	{booking} booking
+	INNER JOIN {users} users_booking ON booking.uid = users_booking.uid
+	LEFT JOIN {field_data_field_bt_ct_ref_1} field_data_field_bt_ct_ref_1 ON booking.pid = field_data_field_bt_ct_ref_1.entity_id AND (field_data_field_bt_ct_ref_1.entity_type = 'booking' AND field_data_field_bt_ct_ref_1.deleted = '0')
+	WHERE (( (field_data_field_bt_ct_ref_1.field_bt_ct_ref_1_target_id IN (".$all_nodes_needed_str.") ) ))
+	ORDER BY booking_created DESC";
+	$booking_uids_arr = array();
+	$booking_uids_arr['']= '-Any-';
+	$qry_all_students_exe = db_query($qry_all_students);
+	foreach($qry_all_students_exe as $qry_all_students_res ){
+	  $student_obj = user_load(intval($qry_all_students_res->booking_uid));
+	  $booking_uids_arr[$qry_all_students_res->booking_uid] = $student_obj->name;
+	}
+	$form['uid']['#type'] = 'select';
+	$form['uid']['#multiple'] = FALSE;
+	unset($form['uid']['#size']);
+    $form['uid']['#options'] = $booking_uids_arr;
+  }
+  // /teacher-bookings page END // 
+  
+  // Hide Save button on Booking EDIT page, just delete button to show there //
+  if(arg(0)=='booking' && is_numeric(arg(1)) && arg(2)=='edit'){
+    unset($form['submit']);
+	drupal_set_title('Delete');
+  }
+  // Hide Save button on Booking EDIT page, just delete button to show there //  
+  
+  
+    
+  
+}
+
+
+
+
+
+
+ 
+ 
+function filter_event_title_menu(){ 
+	 
+	
+	return array(
+
+    'check_teacher_subjects' => array(
+		'title'						=> 'Check Teacher Subjects',
+		'page callback'		=> 'check_teacher_subjects',
+		'access callback'	=> true, // 'user_access' (default), 'node_access'
+		'file'				=> 'check_teacher_subjects.inc',
+		'type'			   => MENU_CALLBACK,
+    ),
+	
+	
+    'set_teacher_subjects_session' => array(
+		'title'						=> 'set_teacher_subjects_session',
+		'page callback'		=> 'set_teacher_subjects_session',
+		'access callback'	=> true, // 'user_access' (default), 'node_access'
+		'file'				=> 'check_teacher_subjects.inc',
+		'type'			   => MENU_CALLBACK,
+    ),	
+	
+	
+   
+
+  );
+}	
