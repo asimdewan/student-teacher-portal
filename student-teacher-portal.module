@@ -1,4 +1,7 @@
 <?php
+
+// test changes push
+
 global $user;
 
 if(arg(0)=='booking' && is_numeric(arg(1)) && arg(2)==""){
